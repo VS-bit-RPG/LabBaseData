@@ -1,6 +1,8 @@
 package edu.java.lab2;
 
 import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 
@@ -18,6 +20,7 @@ public class DogShowAdmin {
     private JTextField ownerName;
     private JTextField dogBreed;
     private JTextField judgeName;
+    private JTextArea logArea;
 
     public void show() {
         // Создание окна
@@ -70,14 +73,75 @@ public class DogShowAdmin {
         inputPanel.add(new JLabel("Судья:"));
         inputPanel.add(judgeName);
 
+        // Добавление текстовой области для логов
+        logArea = new JTextArea(5, 50);
+        logArea.setEditable(false);
+        JScrollPane logScrollPane = new JScrollPane(logArea);
+
         // Добавление панели и таблицы в окно
         adminFrame.setLayout(new BorderLayout());
         adminFrame.add(toolBar, BorderLayout.NORTH);
         adminFrame.add(scroll, BorderLayout.CENTER);
         adminFrame.add(inputPanel, BorderLayout.SOUTH);
+        adminFrame.add(logScrollPane, BorderLayout.EAST);
+
+        // Добавление слушателей к кнопкам
+        addListeners();
 
         // Отображение окна
         adminFrame.setVisible(true);
+    }
+
+    private void addListeners() {
+        // Слушатель для кнопки "Сохранить"
+        save.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                logArea.append("Информация сохранена.\n");
+                JOptionPane.showMessageDialog(adminFrame, "Данные успешно сохранены!");
+            }
+        });
+
+        // Слушатель для кнопки "Добавить собаку"
+        addDog.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String dog = dogName.getText();
+                String owner = ownerName.getText();
+                String breed = dogBreed.getText();
+                String judge = judgeName.getText();
+
+                if (!dog.isEmpty() && !owner.isEmpty() && !breed.isEmpty() && !judge.isEmpty()) {
+                    model.addRow(new Object[]{owner, dog, breed, judge});
+                    logArea.append("Добавлена собака: " + dog + " (Владелец: " + owner + ", Порода: " + breed + ", Судья: " + judge + ")\n");
+                    clearInputFields();
+                } else {
+                    JOptionPane.showMessageDialog(adminFrame, "Заполните все поля!");
+                }
+            }
+        });
+
+        // Слушатель для кнопки "Добавить судью"
+        addJudge.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String judge = judgeName.getText();
+                if (!judge.isEmpty()) {
+                    logArea.append("Добавлен судья: " + judge + "\n");
+                    judgeName.setText("");
+                } else {
+                    JOptionPane.showMessageDialog(adminFrame, "Введите имя судьи!");
+                }
+            }
+        });
+    }
+
+    // Метод для очистки полей ввода
+    private void clearInputFields() {
+        dogName.setText("");
+        ownerName.setText("");
+        dogBreed.setText("");
+        judgeName.setText("");
     }
 
     public static void main(String[] args) {
