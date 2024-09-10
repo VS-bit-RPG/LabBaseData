@@ -6,6 +6,13 @@ import java.awt.event.ActionListener;
 import java.io.*;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.*;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import org.w3c.dom.*;
 
 // Собственное исключение для проверки данных собаки
 class InvalidDogDataException extends Exception {
@@ -189,38 +196,97 @@ public class DogShowAdmin {
         });
     }
 
-    // Метод для сохранения данных таблицы в файл
+    // Метод для сохранения данных таблицы в XML файл
     private void saveTableToFile() {
         if (fileChooser.showSaveDialog(adminFrame) == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            // Добавим расширение .xml, если его нет
+            if (!file.getAbsolutePath().endsWith(".xml")) {
+                file = new File(file.getAbsolutePath() + ".xml");
+            }
+
+            try {
+                // Создаем экземпляры для работы с XML
+                DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+                Document doc = dBuilder.newDocument();
+
+                // Создаем корневой элемент
+                Element rootElement = doc.createElement("DogShow");
+                doc.appendChild(rootElement);
+
+                // Проходим по каждой строке таблицы и добавляем данные в XML
                 for (int i = 0; i < model.getRowCount(); i++) {
-                    for (int j = 0; j < model.getColumnCount(); j++) {
-                        writer.write(model.getValueAt(i, j).toString() + "\t");
-                    }
-                    writer.newLine();
+                    Element dogElement = doc.createElement("Dog");
+                    rootElement.appendChild(dogElement);
+
+                    Element ownerElement = doc.createElement("Owner");
+                    ownerElement.appendChild(doc.createTextNode(model.getValueAt(i, 0).toString()));
+                    dogElement.appendChild(ownerElement);
+
+                    Element nameElement = doc.createElement("Name");
+                    nameElement.appendChild(doc.createTextNode(model.getValueAt(i, 1).toString()));
+                    dogElement.appendChild(nameElement);
+
+                    Element breedElement = doc.createElement("Breed");
+                    breedElement.appendChild(doc.createTextNode(model.getValueAt(i, 2).toString()));
+                    dogElement.appendChild(breedElement);
+
+                    Element judgeElement = doc.createElement("Judge");
+                    judgeElement.appendChild(doc.createTextNode(model.getValueAt(i, 3).toString()));
+                    dogElement.appendChild(judgeElement);
                 }
-                logArea.append("Таблица сохранена в файл: " + file.getName() + "\n");
-            } catch (IOException e) {
-                logArea.append("Ошибка при сохранении файла: " + e.getMessage() + "\n");
+
+                // Преобразуем созданный XML в файл
+                TransformerFactory transformerFactory = TransformerFactory.newInstance();
+                Transformer transformer = transformerFactory.newTransformer();
+                DOMSource source = new DOMSource(doc);
+                StreamResult result = new StreamResult(new FileOutputStream(file));
+
+                // Настройка форматирования XML
+                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+                transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+                transformer.transform(source, result);
+
+                logArea.append("Таблица сохранена в XML файл: " + file.getName() + "\n");
+            } catch (ParserConfigurationException | TransformerException | IOException e) {
+                logArea.append("Ошибка при сохранении XML файла: " + e.getMessage() + "\n");
             }
         }
     }
 
-    // Метод для загрузки данных таблицы из файла
+    // Метод для загрузки данных таблицы из XML файла
     private void loadTableFromFile() {
         if (fileChooser.showOpenDialog(adminFrame) == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            try {
+                // Чтение XML файла
+                DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+                Document doc = dBuilder.parse(file);
+                doc.getDocumentElement().normalize();
+
                 model.setRowCount(0); // Очистить текущие данные
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] rowData = line.split("\t");
-                    model.addRow(rowData);
+
+                // Проходим по каждому элементу Dog и загружаем данные в таблицу
+                NodeList nList = doc.getElementsByTagName("Dog");
+                for (int i = 0; i < nList.getLength(); i++) {
+                    Node nNode = nList.item(i);
+                    if (nNode.getNodeType() == Node.ELEMENT_NODE) {
+                        Element eElement = (Element) nNode;
+
+                        String owner = eElement.getElementsByTagName("Owner").item(0).getTextContent();
+                        String name = eElement.getElementsByTagName("Name").item(0).getTextContent();
+                        String breed = eElement.getElementsByTagName("Breed").item(0).getTextContent();
+                        String judge = eElement.getElementsByTagName("Judge").item(0).getTextContent();
+
+                        model.addRow(new Object[]{owner, name, breed, judge});
+                    }
                 }
-                logArea.append("Таблица загружена из файла: " + file.getName() + "\n");
-            } catch (IOException e) {
-                logArea.append("Ошибка при загрузке файла: " + e.getMessage() + "\n");
+
+                logArea.append("Таблица загружена из XML файла: " + file.getName() + "\n");
+            } catch (Exception e) {
+                logArea.append("Ошибка при загрузке XML файла: " + e.getMessage() + "\n");
             }
         }
     }
