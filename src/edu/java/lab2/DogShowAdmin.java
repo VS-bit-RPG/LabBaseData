@@ -4,6 +4,7 @@ import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.*;
+import java.util.concurrent.CountDownLatch;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.xml.parsers.DocumentBuilder;
@@ -22,7 +23,6 @@ class InvalidDogDataException extends Exception {
 }
 
 public class DogShowAdmin {
-    // Объявление графических компонентов
     private JFrame adminFrame;
     private DefaultTableModel model;
     private JButton save;
@@ -31,6 +31,7 @@ public class DogShowAdmin {
     private JButton deleteDog;
     private JButton saveToFile;
     private JButton loadFromFile;
+    private JButton generateReportButton;
     private JToolBar toolBar;
     private JScrollPane scroll;
     private JTable dataTable;
@@ -40,6 +41,7 @@ public class DogShowAdmin {
     private JTextField judgeName;
     private JTextArea logArea;
     private JFileChooser fileChooser;
+    private final Object lock = new Object(); // объект синхронизации
 
     public void show() {
         // Создание окна
@@ -67,6 +69,9 @@ public class DogShowAdmin {
         loadFromFile = new JButton("Загрузить из файла");
         loadFromFile.setToolTipText("Загрузить таблицу из файла");
 
+        generateReportButton = new JButton("Создать отчет");
+        generateReportButton.setToolTipText("Сгенерировать отчет");
+
         // Панель инструментов
         toolBar = new JToolBar("Панель инструментов");
         toolBar.add(save);
@@ -75,25 +80,20 @@ public class DogShowAdmin {
         toolBar.add(deleteDog);
         toolBar.add(saveToFile);
         toolBar.add(loadFromFile);
+        toolBar.add(generateReportButton);
 
         // Настройка таблицы с данными о собаках и судьях
         String[] columns = {"Владелец", "Кличка собаки", "Порода", "Судья"};
-        String[][] data = {
-                {"Иванов", "Рекс", "Немецкая овчарка", "Судья Петров"},
-                {"Сидоров", "Барсик", "Шпиц", "Судья Иванова"},
-                {"Кузнецов", "Бобик", "Лабрадор", "Судья Сидорова"}
-        };
-
-        model = new DefaultTableModel(data, columns);
+        model = new DefaultTableModel(columns, 0);
         dataTable = new JTable(model);
         scroll = new JScrollPane(dataTable);
 
         // Компоненты для добавления новой собаки
         JPanel inputPanel = new JPanel();
-        dogName = new JTextField("Кличка собаки", 10);
-        ownerName = new JTextField("Имя владельца", 10);
-        dogBreed = new JTextField("Порода", 10);
-        judgeName = new JTextField("Судья", 10);
+        dogName = new JTextField(10);
+        ownerName = new JTextField(10);
+        dogBreed = new JTextField(10);
+        judgeName = new JTextField(10);
 
         inputPanel.add(new JLabel("Кличка собаки:"));
         inputPanel.add(dogName);
@@ -126,9 +126,7 @@ public class DogShowAdmin {
         fileChooser = new JFileChooser();
     }
 
-    // Метод для добавления слушателей
     private void addListeners() {
-        // Слушатель для кнопки "Сохранить"
         save.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -137,7 +135,6 @@ public class DogShowAdmin {
             }
         });
 
-        // Слушатель для кнопки "Добавить собаку"
         addDog.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -150,7 +147,6 @@ public class DogShowAdmin {
             }
         });
 
-        // Слушатель для кнопки "Добавить судью"
         addJudge.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -164,14 +160,13 @@ public class DogShowAdmin {
             }
         });
 
-        // Слушатель для кнопки "Удалить собаку"
         deleteDog.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 int selectedRow = dataTable.getSelectedRow();
-                if (selectedRow != -1) {  // Проверка, что строка выбрана
-                    String dogName = (String) model.getValueAt(selectedRow, 1);  // Получение имени собаки
-                    model.removeRow(selectedRow);  // Удаление строки из таблицы
+                if (selectedRow != -1) {
+                    String dogName = (String) model.getValueAt(selectedRow, 1);
+                    model.removeRow(selectedRow);
                     logArea.append("Удалена собака: " + dogName + "\n");
                 } else {
                     JOptionPane.showMessageDialog(adminFrame, "Выберите собаку для удаления!");
@@ -179,7 +174,6 @@ public class DogShowAdmin {
             }
         });
 
-        // Слушатель для кнопки "Сохранить в файл"
         saveToFile.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -187,31 +181,99 @@ public class DogShowAdmin {
             }
         });
 
-        // Слушатель для кнопки "Загрузить из файла"
         loadFromFile.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 loadTableFromFile();
             }
         });
+
+        generateReportButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                generateReport();
+            }
+        });
     }
 
-    // Метод для сохранения данных таблицы в XML файл
+    // Многопоточный метод для генерации отчета
+    private void generateReport() {
+        Thread loadThread = new Thread(new LoadTask());
+        Thread editThread = new Thread(new EditTask());
+        Thread reportThread = new Thread(new ReportTask());
+
+        loadThread.start();
+        try {
+            loadThread.join();
+            editThread.start();
+            editThread.join();
+            reportThread.start();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Поток для загрузки данных из файла
+    class LoadTask implements Runnable {
+        @Override
+        public void run() {
+            synchronized (lock) {
+                logArea.append("Загрузка данных из XML...\n");
+                loadTableFromFile();
+                lock.notify();
+            }
+        }
+    }
+
+    // Поток для редактирования данных
+    class EditTask implements Runnable {
+        @Override
+        public void run() {
+            synchronized (lock) {
+                try {
+                    lock.wait();
+                    logArea.append("Редактирование данных...\n");
+                    // Здесь могут быть операции по редактированию
+                    saveTableToFile();
+                    lock.notify();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    // Поток для генерации отчета
+    class ReportTask implements Runnable {
+        @Override
+        public void run() {
+            synchronized (lock) {
+                try {
+                    lock.wait();
+                    logArea.append("Создание отчета...\n");
+                    // Генерация отчета
+                    logArea.append("Отчет готов.\n");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     private void saveTableToFile() {
         if (fileChooser.showSaveDialog(adminFrame) == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
-            // Добавим расширение .xml, если его нет
             if (!file.getAbsolutePath().endsWith(".xml")) {
                 file = new File(file.getAbsolutePath() + ".xml");
             }
 
             try {
-                // Создаем экземпляры для работы с XML
+                // Создаем XML документ
                 DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
                 DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
                 Document doc = dBuilder.newDocument();
 
-                // Создаем корневой элемент
+                // Корневой элемент
                 Element rootElement = doc.createElement("DogShow");
                 doc.appendChild(rootElement);
 
@@ -241,21 +303,19 @@ public class DogShowAdmin {
                 TransformerFactory transformerFactory = TransformerFactory.newInstance();
                 Transformer transformer = transformerFactory.newTransformer();
                 DOMSource source = new DOMSource(doc);
-                StreamResult result = new StreamResult(new FileOutputStream(file));
+                StreamResult result = new StreamResult(file);
 
-                // Настройка форматирования XML
                 transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-                transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
                 transformer.transform(source, result);
 
                 logArea.append("Таблица сохранена в XML файл: " + file.getName() + "\n");
-            } catch (ParserConfigurationException | TransformerException | IOException e) {
-                logArea.append("Ошибка при сохранении XML файла: " + e.getMessage() + "\n");
+            } catch (Exception e) {
+                e.printStackTrace();
+                logArea.append("Ошибка при сохранении файла: " + e.getMessage() + "\n");
             }
         }
     }
 
-    // Метод для загрузки данных таблицы из XML файла
     private void loadTableFromFile() {
         if (fileChooser.showOpenDialog(adminFrame) == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
@@ -266,7 +326,8 @@ public class DogShowAdmin {
                 Document doc = dBuilder.parse(file);
                 doc.getDocumentElement().normalize();
 
-                model.setRowCount(0); // Очистить текущие данные
+                // Очистка текущей таблицы перед загрузкой данных
+                model.setRowCount(0);
 
                 // Проходим по каждому элементу Dog и загружаем данные в таблицу
                 NodeList nList = doc.getElementsByTagName("Dog");
@@ -286,12 +347,13 @@ public class DogShowAdmin {
 
                 logArea.append("Таблица загружена из XML файла: " + file.getName() + "\n");
             } catch (Exception e) {
-                logArea.append("Ошибка при загрузке XML файла: " + e.getMessage() + "\n");
+                e.printStackTrace();
+                logArea.append("Ошибка при загрузке файла: " + e.getMessage() + "\n");
             }
         }
     }
 
-    // Метод для добавления собаки в таблицу с обработкой исключений
+
     private void addDogToTable() throws InvalidDogDataException {
         String dog = dogName.getText();
         String owner = ownerName.getText();
@@ -316,7 +378,6 @@ public class DogShowAdmin {
         clearInputFields();
     }
 
-    // Метод для очистки полей ввода
     private void clearInputFields() {
         dogName.setText("");
         ownerName.setText("");
@@ -325,7 +386,6 @@ public class DogShowAdmin {
     }
 
     public static void main(String[] args) {
-        // Создание и отображение экранной формы
         new DogShowAdmin().show();
     }
 }
